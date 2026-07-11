@@ -30,6 +30,21 @@ export async function fetchYears() {
   return res.data;
 }
 
+export async function fetchPackages() {
+  const res = await apiClient.get('/api/photos/meta/packages');
+  return res.data;
+}
+
+export async function fetchFolders(params) {
+  const res = await apiClient.get('/api/photos/meta/folders', { params });
+  return res.data;
+}
+
+export async function fetchProducts(params) {
+  const res = await apiClient.get('/api/photos/meta/products', { params });
+  return res.data;
+}
+
 export async function triggerScan() {
   const res = await apiClient.post('/api/scan/trigger');
   return res.data;

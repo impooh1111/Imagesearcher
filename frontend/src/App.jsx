@@ -5,6 +5,9 @@ import {
   logout,
   searchPhotos,
   fetchYears,
+  fetchPackages,
+  fetchFolders,
+  fetchProducts,
   triggerScan,
 } from './api/client';
 import DateRangeFilter from './components/DateRangeFilter';
@@ -28,8 +31,19 @@ export default function App() {
 
   const [searchText, setSearchText] = useState('');
   const debouncedSearch = useDebouncedValue(searchText, 400);
-  const [filters, setFilters] = useState({ year: '', startDate: '', endDate: '' });
+  const [filters, setFilters] = useState({
+    year: '',
+    startDate: '',
+    endDate: '',
+    package: '',
+    folder: '',
+    product: '',
+  });
   const [years, setYears] = useState([]);
+  const [packages, setPackages] = useState([]);
+  const [folders, setFolders] = useState([]);
+  const [products, setProducts] = useState([]);
+  const [sort] = useState('date');
 
   const [items, setItems] = useState([]);
   const [page, setPage] = useState(1);
@@ -53,8 +67,25 @@ export default function App() {
   useEffect(() => {
     if (user) {
       fetchYears().then(setYears).catch(() => {});
+      fetchPackages().then(setPackages).catch(() => {});
     }
   }, [user]);
+
+  // ดึงรายชื่อ Subfolder ใหม่ทุกครั้งที่เปลี่ยน Package ที่เลือก
+  useEffect(() => {
+    if (!user) return;
+    fetchFolders({ package: filters.package || undefined })
+      .then(setFolders)
+      .catch(() => {});
+  }, [user, filters.package]);
+
+  // ดึงรายชื่อสินค้าใหม่ทุกครั้งที่เปลี่ยน Package หรือ Subfolder ที่เลือก
+  useEffect(() => {
+    if (!user) return;
+    fetchProducts({ package: filters.package || undefined, folder: filters.folder || undefined })
+      .then(setProducts)
+      .catch(() => {});
+  }, [user, filters.package, filters.folder]);
 
   const queryParams = useMemo(
     () => ({
@@ -62,9 +93,13 @@ export default function App() {
       year: filters.year || undefined,
       startDate: filters.startDate || undefined,
       endDate: filters.endDate || undefined,
+      package: filters.package || undefined,
+      folder: filters.folder || undefined,
+      product: filters.product || undefined,
+      sort,
       pageSize: PAGE_SIZE,
     }),
-    [debouncedSearch, filters]
+    [debouncedSearch, filters, sort]
   );
 
   // เมื่อเงื่อนไขค้นหาเปลี่ยน ให้เริ่มหน้า 1 ใหม่เสมอ
@@ -165,7 +200,14 @@ export default function App() {
           value={searchText}
           onChange={(e) => setSearchText(e.target.value)}
         />
-        <DateRangeFilter years={years} filters={filters} onChange={setFilters} />
+        <DateRangeFilter
+          years={years}
+          packages={packages}
+          folders={folders}
+          products={products}
+          filters={filters}
+          onChange={setFilters}
+        />
       </div>
 
       <div className="result-meta">

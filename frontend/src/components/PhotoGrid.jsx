@@ -39,7 +39,7 @@ export default function PhotoGrid({ items, loading, hasMore, onLoadMore, onSelec
           >
             <div className="photo-thumb-wrap">
               <img
-                src={photo.thumbnail_link}
+                src={`http://localhost:4000/api/photos/${photo.id}/thumbnail`}
                 alt={photo.name}
                 loading="lazy"
                 onError={(e) => {

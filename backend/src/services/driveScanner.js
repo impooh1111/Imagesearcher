@@ -46,20 +46,45 @@ function isImage(file) {
  */
 function resolveTakenDate(file) {
   const exifTime = file.imageMediaMetadata && file.imageMediaMetadata.time;
-  return exifTime || file.createdTime;
+  if (exifTime) {
+    // Google Drive ส่งวันที่แบบ EXIF "YYYY:MM:DD HH:MM:SS"
+    // ต้องแปลงเป็น "YYYY-MM-DD HH:MM:SS" ก่อน JS ถึงจะอ่านออก
+    return exifTime.replace(/^(\d{4}):(\d{2}):(\d{2})/, '$1-$2-$3');
+  }
+  return file.createdTime;
 }
 
+function parsePathInfo(folderPath) {
+  const segments = (folderPath || '').split('/').filter(Boolean);
+  const packageName = segments[0] || null;
+  const monthFolder = segments[1] || null;
+  const productName = segments[2] || null;
+
+  let year = null;
+  let month = null;
+  if (monthFolder) {
+    const m = monthFolder.match(/^(\d{1,2})\D+(\d{4})/);
+    if (m) {
+      month = Number(m[1]);
+      year = Number(m[2]);
+    }
+  }
+
+  // periodFolder = ชื่อโฟลเดอร์ "ช่วงวันที่" แบบเต็ม เช่น "01 Jan 2026 1-15"
+  // ใช้แสดงเป็นตัวกรอง Subfolder ในหน้าเว็บ (แยกจาก package/product)
+  return { packageName, productName, year, month, periodFolder: monthFolder };
+}
 const upsertStmt = db.prepare(`
-  INSERT INTO photos (
+INSERT INTO photos (
     id, name, folder_path, parent_folder_id, mime_type,
     taken_date, created_time, modified_time, size,
     thumbnail_link, web_view_link, web_content_link,
-    year, month, indexed_at
+    year, month, package_name, product_name, period_folder, indexed_at
   ) VALUES (
     @id, @name, @folder_path, @parent_folder_id, @mime_type,
     @taken_date, @created_time, @modified_time, @size,
     @thumbnail_link, @web_view_link, @web_content_link,
-    @year, @month, @indexed_at
+    @year, @month, @package_name, @product_name, @period_folder, @indexed_at
   )
   ON CONFLICT(id) DO UPDATE SET
     name=excluded.name,
@@ -75,6 +100,9 @@ const upsertStmt = db.prepare(`
     web_content_link=excluded.web_content_link,
     year=excluded.year,
     month=excluded.month,
+    package_name=excluded.package_name,
+    product_name=excluded.product_name,
+    period_folder=excluded.period_folder,
     indexed_at=excluded.indexed_at
 `);
 
@@ -111,8 +139,20 @@ async function scanDrive(rootFolderId, rootPath = '') {
 
       if (!isImage(file)) continue;
 
-      const takenDate = resolveTakenDate(file);
-      const dateObj = takenDate ? new Date(takenDate) : null;
+     const takenDate = resolveTakenDate(file);
+      const pathInfo = parsePathInfo(folderPath);
+
+      // fallback: ถ้า parse ปี/เดือนจากชื่อโฟลเดอร์ไม่ได้ (ชื่อโฟลเดอร์ไม่ตรง pattern)
+      // ให้คำนวณจากวันที่ถ่ายจริงแทน จะได้ไม่มีรูปตกหล่นจากตัวกรองปี
+      let year = pathInfo.year;
+      let month = pathInfo.month;
+      if (year == null && takenDate) {
+        const d = new Date(takenDate);
+        if (!Number.isNaN(d.getTime())) {
+          year = d.getFullYear();
+          month = d.getMonth() + 1;
+        }
+      }
 
       buffer.push({
         id: file.id,
@@ -127,8 +167,11 @@ async function scanDrive(rootFolderId, rootPath = '') {
         thumbnail_link: file.thumbnailLink || null,
         web_view_link: file.webViewLink || null,
         web_content_link: file.webContentLink || null,
-        year: dateObj ? dateObj.getFullYear() : null,
-        month: dateObj ? dateObj.getMonth() + 1 : null,
+       year,
+        month,
+        package_name: pathInfo.packageName,
+        product_name: pathInfo.productName,
+        period_folder: pathInfo.periodFolder,
         indexed_at: new Date().toISOString(),
       });
       filesScanned += 1;
